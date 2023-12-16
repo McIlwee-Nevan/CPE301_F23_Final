@@ -1,6 +1,14 @@
 
 #define RDA 0x80
-#define TBE 0x20  
+#define TBE 0x20
+
+/*LEDs on PORT B
+BLUE_LED = 7; //PB4 ~D10
+GREEN_LED = 6, //PB7 ~D13
+YELLOW_LED = 5, //PB6 ~D12
+RED_LED = 4, //PB5 ~D11
+*/
+
 
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
 volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
@@ -13,6 +21,15 @@ volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
+char states[][10] = {"DISABLED", "IDLE", "RUNNING", "ERROR"};
+int curState = 0;
+bool monitoring = false;
+
+int temp = 0;
+int tempThreshold = 1000;
+int waterLevel = 1000;
+int waterLevelThreshold = 0;
+
 void setup() 
 {
   // setup the UART
@@ -21,13 +38,90 @@ void setup()
   // setup the ADC
   adc_init();
 
+  DDRE &= 0xEF; //Start Button, Input
+  PORTE |= 0x10; //Start Button, Pullup
+  DDRB |= 0xF0; //LEDs, output
+  PORTB = 0b00100000; //Enable yellow
+  attachInterrupt(digitalPinToInterrupt(2), toggleSystem, FALLING);
+
+  //Send Startup to serial
+
 }
 void loop() 
 {
-  int analog = adc_read(5);
-  Serial.println(analog);
+  //Stepper goes here
+
+
+  //State Machine Switch
+  switch(curState){
+    case 0:  //DISABLED
+      break;
+    
+    case 1: //IDLE
+      if(waterLevel <= waterLevelThreshold){
+        //turn off green led
+        //turn on red led
+        //clear lcd, display error
+        //report transition
+        curState = 3;
+      }
+      else if(temp > tempThreshold){
+        //turn off green led
+        //turn on blue led
+        //turn on fan motor
+        //report transition
+        curState = 2;
+      }
+      break;
+    
+    case 2: //RUNNING
+      if(waterLevel <= waterLevelThreshold){
+        //turn off fan motor
+        //turn off blue led
+        //turn on red led
+        //clear lcd, display error
+        //report transition
+        curState = 3;
+      }
+      else if(temp <= tempThreshold){
+        //turn off fan motor
+        //turn off blue led
+        //turn on green led
+        //report transition
+        curState = 1;
+      }
+      break;
+
+    case 3: //ERROR
+      while(waterLevel <= waterLevelThreshold /*&& reset is not pressed*/);
+      //turn off red led
+      //turn on green led
+      //clear lcd, print data
+      //report transition
+      curState = 1;
+  }
+
 
 }
+
+
+void toggleSystem(){
+  if(curState == 0){ //DISABLED
+    PORTB = 0b01000000;
+    Serial.println("Disabled to Idle");
+    monitoring = true;
+    curState = 1;
+  }
+  else{
+    monitoring = false;
+    //turn off motor
+    PORTB = 0b00100000;
+    Serial.print(states[curState]);
+    Serial.println(" to Disabled");
+    curState = 0;
+  }
+}
+
 void adc_init()
 {
   // setup the A register
