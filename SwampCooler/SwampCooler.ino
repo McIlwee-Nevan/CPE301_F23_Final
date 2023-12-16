@@ -9,6 +9,7 @@ YELLOW_LED = 5, //PB6 ~D12
 RED_LED = 4, //PB5 ~D11
 */
 
+unsigned int WATER_SENSOR = 7;
 
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
 volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
@@ -27,8 +28,8 @@ bool monitoring = false;
 
 int temp = 0;
 int tempThreshold = 1000;
-int waterLevel = 1000;
-int waterLevelThreshold = 0;
+int waterLevel = 0;
+int waterLevelThreshold = 50;
 
 void setup() 
 {
@@ -40,8 +41,10 @@ void setup()
 
   DDRE &= 0xEF; //Start Button, Input
   PORTE |= 0x10; //Start Button, Pullup
-  DDRB |= 0xF0; //LEDs, output
-  PORTB = 0b00100000; //Enable yellow
+  DDRB &= 0xFE; //Reset Button, Input
+  PORTB |= 0x01; //Reset Button, Pullup
+  DDRL |= 0x0F; //LEDs, output
+  PORTL = 0b0010; //Enable yellow
   attachInterrupt(digitalPinToInterrupt(2), toggleSystem, FALLING);
 
   //Send Startup to serial
@@ -51,6 +54,10 @@ void loop()
 {
   //Stepper goes here
 
+  //Monitoring
+  if(monitoring){
+    waterLevel = adc_read(WATER_SENSOR);
+  }
 
   //State Machine Switch
   switch(curState){
@@ -59,10 +66,9 @@ void loop()
     
     case 1: //IDLE
       if(waterLevel <= waterLevelThreshold){
-        //turn off green led
-        //turn on red led
+        PORTL = 0b0001;
         //clear lcd, display error
-        //report transition
+        Serial.println("Idle to Error");
         curState = 3;
       }
       else if(temp > tempThreshold){
@@ -93,12 +99,16 @@ void loop()
       break;
 
     case 3: //ERROR
-      while(waterLevel <= waterLevelThreshold /*&& reset is not pressed*/);
-      //turn off red led
-      //turn on green led
-      //clear lcd, print data
-      //report transition
-      curState = 1;
+      while(curState == 3){
+        waterLevel = adc_read(WATER_SENSOR);
+        if((waterLevel > waterLevelThreshold) && !(PINB & 0x01))
+        {
+          PORTL = 0b0100;
+          //clear lcd, print data
+          Serial.println("Error to Idle");
+          curState = 1;
+        }
+      }
   }
 
 
@@ -107,7 +117,7 @@ void loop()
 
 void toggleSystem(){
   if(curState == 0){ //DISABLED
-    PORTB = 0b01000000;
+    PORTL = 0b0100;
     Serial.println("Disabled to Idle");
     monitoring = true;
     curState = 1;
@@ -115,7 +125,7 @@ void toggleSystem(){
   else{
     monitoring = false;
     //turn off motor
-    PORTB = 0b00100000;
+    PORTL = 0b0010;
     Serial.print(states[curState]);
     Serial.println(" to Disabled");
     curState = 0;
