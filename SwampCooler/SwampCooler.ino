@@ -1,3 +1,4 @@
+#include <LiquidCrystal.h>
 
 #define RDA 0x80
 #define TBE 0x20
@@ -41,10 +42,10 @@ void setup()
 
   DDRE &= 0xEF; //Start Button, Input
   PORTE |= 0x10; //Start Button, Pullup
-  DDRB &= 0xFE; //Reset Button, Input
-  PORTB |= 0x01; //Reset Button, Pullup
-  DDRL |= 0x0F; //LEDs, output
-  PORTL = 0b0010; //Enable yellow
+  DDRE &= 0xDF; //Reset Button, Input
+  PORTE |= 0x20; //Reset Button, Pullup
+  DDRB |= 0xF0; //LEDs, output
+  PORTB = 0b00100000; //Enable yellow
   attachInterrupt(digitalPinToInterrupt(2), toggleSystem, FALLING);
 
   //Send Startup to serial
@@ -66,7 +67,7 @@ void loop()
     
     case 1: //IDLE
       if(waterLevel <= waterLevelThreshold){
-        PORTL = 0b0001;
+        PORTB = 0b00010000;
         //clear lcd, display error
         Serial.println("Idle to Error");
         curState = 3;
@@ -101,9 +102,9 @@ void loop()
     case 3: //ERROR
       while(curState == 3){
         waterLevel = adc_read(WATER_SENSOR);
-        if((waterLevel > waterLevelThreshold) && !(PINB & 0x01))
+        if((waterLevel > waterLevelThreshold) && !(PINE & 0x01))
         {
-          PORTL = 0b0100;
+          PORTB = 0b01000000;
           //clear lcd, print data
           Serial.println("Error to Idle");
           curState = 1;
@@ -117,7 +118,7 @@ void loop()
 
 void toggleSystem(){
   if(curState == 0){ //DISABLED
-    PORTL = 0b0100;
+    PORTB = 0b01000000;
     Serial.println("Disabled to Idle");
     monitoring = true;
     curState = 1;
@@ -125,7 +126,7 @@ void toggleSystem(){
   else{
     monitoring = false;
     //turn off motor
-    PORTL = 0b0010;
+    PORTB = 0b00100000;
     Serial.print(states[curState]);
     Serial.println(" to Disabled");
     curState = 0;
