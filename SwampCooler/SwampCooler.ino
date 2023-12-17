@@ -1,16 +1,27 @@
 #include <LiquidCrystal.h>
+#include <dht.h> //install the DHTLib library
 
 #define RDA 0x80
 #define TBE 0x20
 
-/*LEDs on PORT B
-BLUE_LED = 7; //PB4 ~D10
-GREEN_LED = 6, //PB7 ~D13
-YELLOW_LED = 5, //PB6 ~D12
-RED_LED = 4, //PB5 ~D11
+/*Setup:
+LEDs on PB7:4
+BLUE - Pin 13
+GREEN - Pin 12
+YELLOW - Pin 11
+RED - Pin 10
+
+DHT11 on Pin 9, PH6
+Water Sensor on Pin A7
+
 */
 
-unsigned int WATER_SENSOR = 7;
+#define WATER_SENSOR 7
+
+#define DHT11_PIN 9
+dht DHT;
+unsigned long previousMillis = 0;  // will store last time temp was checked
+const long interval = 2000;  // interval at which to check temp (milliseconds)
 
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
 volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
@@ -58,6 +69,18 @@ void loop()
   //Monitoring
   if(monitoring){
     waterLevel = adc_read(WATER_SENSOR);
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval) {
+      previousMillis = currentMillis;
+    
+      int chk = DHT.read11(DHT11_PIN);
+      temp = DHT.temperature;
+      Serial.print("Temperature = ");
+      Serial.println(temp);
+      Serial.print("Humidity = ");
+      Serial.println(DHT.humidity);
+    }
   }
 
   //State Machine Switch
@@ -67,8 +90,6 @@ void loop()
     
     case 1: //IDLE
       if(waterLevel <= waterLevelThreshold){
-        PORTB = 0b00010000;
-        //clear lcd, display error
         Serial.println("Idle to Error");
         curState = 3;
       }
@@ -84,9 +105,6 @@ void loop()
     case 2: //RUNNING
       if(waterLevel <= waterLevelThreshold){
         //turn off fan motor
-        //turn off blue led
-        //turn on red led
-        //clear lcd, display error
         //report transition
         curState = 3;
       }
@@ -100,6 +118,9 @@ void loop()
       break;
 
     case 3: //ERROR
+      PORTB = 0b00010000;
+      previousMillis = 0;
+      //clear lcd, display error
       while(curState == 3){
         waterLevel = adc_read(WATER_SENSOR);
         if((waterLevel > waterLevelThreshold) && !(PINE & 0x01))
@@ -125,6 +146,7 @@ void toggleSystem(){
   }
   else{
     monitoring = false;
+    previousMillis = 0;
     //turn off motor
     PORTB = 0b00100000;
     Serial.print(states[curState]);
