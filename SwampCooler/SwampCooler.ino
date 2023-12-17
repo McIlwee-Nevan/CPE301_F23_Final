@@ -14,6 +14,8 @@ RED - Pin 10
 DHT11 on Pin 9, PH6
 Water Sensor on Pin A7
 
+Display
+RS = 11, EN = 12, D4 = 3, D5 = 4, D6 = 5, D7 = 6
 */
 
 #define WATER_SENSOR 7
@@ -22,6 +24,9 @@ Water Sensor on Pin A7
 dht DHT;
 unsigned long previousMillis = 0;  // will store last time temp was checked
 const long interval = 2000;  // interval at which to check temp (milliseconds)
+
+const int RS = 19, EN = 18, D4 = 17, D5 = 16, D6 = 15, D7 = 14;
+LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
 
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
 volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
@@ -39,7 +44,7 @@ int curState = 0;
 bool monitoring = false;
 
 int temp = 0;
-int tempThreshold = 1000;
+int tempThreshold = 25;
 int waterLevel = 0;
 int waterLevelThreshold = 50;
 
@@ -50,6 +55,9 @@ void setup()
   Serial.begin(9600);
   // setup the ADC
   adc_init();
+
+  //Start LCD
+  lcd.begin(16, 2);
 
   DDRE &= 0xEF; //Start Button, Input
   PORTE |= 0x10; //Start Button, Pullup
@@ -76,11 +84,17 @@ void loop()
     
       int chk = DHT.read11(DHT11_PIN);
       temp = DHT.temperature;
-      Serial.print("Temperature = ");
-      Serial.println(temp);
-      Serial.print("Humidity = ");
-      Serial.println(DHT.humidity);
+      lcd.clear();
+      lcd.home();
+      lcd.print("Temperature = ");
+      lcd.print(temp);
+      lcd.setCursor(0, 1);
+      lcd.print("Humidity = ");
+      lcd.print(DHT.humidity);
     }
+  }
+  else{
+    lcd.clear();
   }
 
   //State Machine Switch
@@ -120,13 +134,17 @@ void loop()
     case 3: //ERROR
       PORTB = 0b00010000;
       previousMillis = 0;
-      //clear lcd, display error
+      lcd.clear();
+      lcd.home();
+      lcd.print("Water level");
+      lcd.setCursor(0, 1);
+      lcd.print("is too low");
       while(curState == 3){
         waterLevel = adc_read(WATER_SENSOR);
-        if((waterLevel > waterLevelThreshold) && !(PINE & 0x01))
+        if((waterLevel > waterLevelThreshold) && !(PINE & 0x20))
         {
           PORTB = 0b01000000;
-          //clear lcd, print data
+          lcd.clear();
           Serial.println("Error to Idle");
           curState = 1;
         }
@@ -148,6 +166,7 @@ void toggleSystem(){
     monitoring = false;
     previousMillis = 0;
     //turn off motor
+    lcd.clear();
     PORTB = 0b00100000;
     Serial.print(states[curState]);
     Serial.println(" to Disabled");
