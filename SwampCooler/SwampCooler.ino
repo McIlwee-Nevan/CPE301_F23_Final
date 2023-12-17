@@ -1,3 +1,5 @@
+#include <Stepper.h>
+
 #include <LiquidCrystal.h>
 #include <dht.h> //install the DHTLib library
 
@@ -16,6 +18,13 @@ Water Sensor on Pin A7
 
 Display
 RS = 11, EN = 12, D4 = 3, D5 = 4, D6 = 5, D7 = 6
+
+Stepper Motor Driver
+IN1 - 49
+IN2 - 46
+IN3 - 47
+IN4 - 48
+
 */
 
 #define WATER_SENSOR 7
@@ -27,6 +36,10 @@ const long interval = 2000;  // interval at which to check temp (milliseconds)
 
 const int RS = 19, EN = 18, D4 = 17, D5 = 16, D6 = 15, D7 = 14;
 LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
+
+const int stepsPerRevolution = 2038;
+Stepper stepper = Stepper(stepsPerRevolution, 49, 46, 47, 48);
+
 
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
 volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
@@ -45,8 +58,8 @@ bool monitoring = false;
 
 int temp = 0;
 int tempThreshold = 25;
-int waterLevel = 0;
-int waterLevelThreshold = 50;
+int waterLevel = 101;
+int waterLevelThreshold = 100;
 
 void setup() 
 {
@@ -59,20 +72,35 @@ void setup()
   //Start LCD
   lcd.begin(16, 2);
 
+  //Configure Stepper
+  stepper.setSpeed(5);
+
   DDRE &= 0xEF; //Start Button, Input
   PORTE |= 0x10; //Start Button, Pullup
   DDRE &= 0xDF; //Reset Button, Input
   PORTE |= 0x20; //Reset Button, Pullup
+
+  DDRH &= 0xE7; //Vent Controls, Input
+  PORTH |= 0x18; //Pullup
+
+  DDRA |= 0x01; //Fan Motor Control
+  PORTA &= 0xFE; //Fan Motor Start: Off
+
   DDRB |= 0xF0; //LEDs, output
   PORTB = 0b00100000; //Enable yellow
   attachInterrupt(digitalPinToInterrupt(2), toggleSystem, FALLING);
 
-  //Send Startup to serial
 
 }
 void loop() 
 {
-  //Stepper goes here
+  //Stepper
+  if(!(PINH & 0x08)){
+    stepper.step(-25);
+  }
+  else if(!(PINH & 0x10)){
+    stepper.step(25);
+  }
 
   //Monitoring
   if(monitoring){
@@ -108,25 +136,23 @@ void loop()
         curState = 3;
       }
       else if(temp > tempThreshold){
-        //turn off green led
-        //turn on blue led
-        //turn on fan motor
-        //report transition
+        PORTB = 0b10000000;
+        PORTA |= 0x01;
+        Serial.println("Idle to Running");
         curState = 2;
       }
       break;
     
     case 2: //RUNNING
       if(waterLevel <= waterLevelThreshold){
-        //turn off fan motor
-        //report transition
+        PORTA &= 0xFE;
+        Serial.println("Running to Error");
         curState = 3;
       }
       else if(temp <= tempThreshold){
-        //turn off fan motor
-        //turn off blue led
-        //turn on green led
-        //report transition
+        PORTA &= 0xFE;
+        PORTB = 0b01000000;
+        Serial.println("Running to Idle");
         curState = 1;
       }
       break;
@@ -165,7 +191,7 @@ void toggleSystem(){
   else{
     monitoring = false;
     previousMillis = 0;
-    //turn off motor
+    PORTA &= 0xFE;
     lcd.clear();
     PORTB = 0b00100000;
     Serial.print(states[curState]);
